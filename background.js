@@ -8,17 +8,23 @@ async function save(record) {
   const all = await records();
   const index = all.findIndex(r => r.id === record.id);
   if (index >= 0) all[index] = record; else all.unshift(record);
-  await chrome.storage.session.set({records: all.slice(0, 20)});
+  // Chrome 102–111 has a 1 MB session quota shared with the key and deduplication IDs.
+  const retained = all.slice(0, 20);
+  while (retained.length > 1 && new TextEncoder().encode(JSON.stringify(retained)).length > 350000) retained.pop();
+  await chrome.storage.session.set({records: retained});
 }
 async function api(path, body) {
   const key = (await chrome.storage.session.get('apiKey')).apiKey;
   if (!key) throw new Error('설정에서 이번 브라우저 세션의 Gemini API 키를 입력하세요.');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120000);
   try {
-    const response = await fetch(`${API_ROOT}/${path}`, {method: body ? 'POST' : 'GET', headers: {'x-goog-api-key': key, ...(body ? {'Content-Type': 'application/json'} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), signal: AbortSignal.timeout(120000)});
+    const response = await fetch(`${API_ROOT}/${path}`, {method: body ? 'POST' : 'GET', headers: {'x-goog-api-key': key, ...(body ? {'Content-Type': 'application/json'} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), signal: controller.signal});
     const data = await response.json();
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${data.error?.message ?? 'API 요청 실패'}`);
     return data;
   } catch (e) { throw new Error(cleanError(e.message, key)); }
+  finally { clearTimeout(timer); }
 }
 async function run(record) {
   if (record.status !== 'pending') return;
@@ -50,7 +56,7 @@ async function handle(msg, sender) {
     // Tombstones survive history trimming, so a repeated delivery cannot generate a second request.
     const seen = (await chrome.storage.session.get('seen')).seen ?? {};
     if (seen[id]) return {duplicate: true};
-    if (Object.keys(seen).length >= 10000) throw new Error('세션 감지 한도에 도달했습니다. 브라우저를 재시작하세요.');
+    if (Object.keys(seen).length >= 2000) throw new Error('세션 감지 한도에 도달했습니다. 브라우저를 재시작하세요.');
     seen[id] = true; await chrome.storage.session.set({seen});
     const record = {id, prompt: msg.prompt, evidence: msg.evidence, source: 'website', status: 'pending', createdAt: Date.now()};
     await save(record);

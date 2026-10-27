@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+// Exercise compatibility without AbortSignal.timeout (unavailable on Chrome 102).
+Object.defineProperty(AbortSignal, 'timeout', {value: undefined, configurable: true});
 // In-memory Chrome and HTTP doubles: no real API calls and no real usage measurements.
 const local = {}, session = {};
 function area(data) {return {async get(key){return {[key]:structuredClone(data[key])};},async set(items){Object.assign(data,structuredClone(items));},async remove(key){delete data[key];},async setAccessLevel(value){assert.equal(value.accessLevel,'TRUSTED_CONTEXTS');}};}
@@ -30,4 +32,15 @@ test('worker enforces trust, consent, durable deduplication and exact request', 
   await Promise.all([send({type:'confirm',id,confirmed:true}),send({type:'confirm',id,confirmed:true})]);assert.equal(calls,2);
   await send({type:'saveSettings',tracking:false,consent:true});
   await send({...capture,eventId:'33333333-3333-4333-8333-333333333333'},page);assert.equal(calls,2);
+});
+
+test('session history stays bounded for the older Chrome 1 MB quota', async () => {
+  await send({type:'saveSettings',tracking:true,consent:false});
+  for (let i=0;i<20;i++) {
+    await send({type:'capture',eventId:crypto.randomUUID(),prompt:'한'.repeat(16000),evidence:{model:'unknown',image:'uncertain'}},page);
+  }
+  const state=await send({type:'state'});
+  assert.ok(state.records.length > 0 && state.records.length < 20);
+  assert.ok(new TextEncoder().encode(JSON.stringify(state.records)).length <= 350000);
+  assert.equal(session.apiKey,'fixture-key');
 });

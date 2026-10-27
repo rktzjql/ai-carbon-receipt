@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Gemini Carbon Receipt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Gemini 이미지 생성의 별도 API 요청에서 실제 토큰 사용량을 확인합니다.",
-  "minimum_chrome_version": "120",
+  "minimum_chrome_version": "102",
   "permissions": ["storage"],
   "host_permissions": ["https://generativelanguage.googleapis.com/*"],
   "background": {"service_worker": "background.js", "type": "module"},
