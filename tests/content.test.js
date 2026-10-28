@@ -149,7 +149,7 @@ test('multiline prompt matches split query text lines despite surrounding contro
   await h.tick();assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
 });
 
-test('paper receipt preserves zero results and does not invent missing values or timestamps', async () => {
+test('paper receipt preserves zero results and omits removed presentation fields', async () => {
   const zero={status:'success',websiteImages:1,result:{images:1,usage:{total:0},energy:{wh:0,carbonGrams:0,whPerToken:0.001921,kgCO2eqPerKwh:0.341}}};
   const missing={status:'no-image',websiteImages:1,result:{images:0,usage:{total:null},energy:{wh:null,carbonGrams:null}}};
   for (const record of [zero,missing]) {
@@ -159,7 +159,7 @@ test('paper receipt preserves zero results and does not invent missing values or
     const output=text(response.children[0].box);
     if(record===zero){assert.match(output,/0\.000\s+Wh/);assert.match(output,/약 0\.00초/);}
     else {assert.match(output,/전력 소비량 미산정/);assert.doesNotMatch(output,/약 [0-9]/);}
-    assert.match(output,/생성 시각 미제공/);assert.match(output,/물 사용량 미산정/);
+    assert.doesNotMatch(output,/생성 시각|물 사용량|별도 API 이미지 생성 완료/);
     assert.deepEqual(record,original);
   }
 });

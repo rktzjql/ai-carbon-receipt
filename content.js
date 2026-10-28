@@ -135,19 +135,17 @@
       if (unit) output.append(el('span', 'gdcr-unit', ` ${unit}`));
       entry.append(el('span', 'gdcr-label', label), output); parent.append(entry);
     };
-    const states = {'waiting-response':'프롬프트 인식 완료 · Gemini 응답 연결 대기', 'waiting-image':'응답 연결 완료 · 생성 이미지 로딩 대기', 'image-detected':'이미지 감지 완료 · 자동 전송 준비 중', 'unverified-submission':'프롬프트는 인식했지만 제출 완료를 확인하지 못했습니다.', 'detection-timeout':'이미지 감지 시간이 지났습니다. API는 호출하지 않았습니다.', dismissed:'API 호출하지 않음', pending:'확장프로그램 패널에서 모델 확인과 별도 유료 호출 동의가 필요합니다.', running:'별도 API 요청 중 · 추가 요금 발생', error:'API 요청 실패', success:'별도 API 이미지 생성 완료', 'no-image':'API 응답에 이미지 없음'};
+    const states = {'waiting-response':'프롬프트 인식 완료 · Gemini 응답 연결 대기', 'waiting-image':'응답 연결 완료 · 생성 이미지 로딩 대기', 'image-detected':'이미지 감지 완료 · 자동 전송 준비 중', 'unverified-submission':'프롬프트는 인식했지만 제출 완료를 확인하지 못했습니다.', 'detection-timeout':'이미지 감지 시간이 지났습니다. API는 호출하지 않았습니다.', dismissed:'API 호출하지 않음', pending:'확장프로그램 패널에서 모델 확인과 별도 유료 호출 동의가 필요합니다.', running:'별도 API 요청 중 · 추가 요금 발생', error:'API 요청 실패', 'no-image':'API 응답에 이미지 없음'};
     const meta = el('section', 'gdcr-meta'); meta.setAttribute('aria-label', '측정 정보');
     row(meta, '서비스', 'Google Gemini');
-    // Render only a supplied timestamp. Never label the current UI render time as generation time.
-    const generatedAt = record.finishedAt ?? record.result?.finishedAt;
-    const date = generatedAt == null ? null : new Date(generatedAt);
-    row(meta, '생성 시각', date && Number.isFinite(date.getTime()) ? date.toLocaleString('ko-KR') : '미제공');
     const usage = record.result?.usage;
     row(meta, '사용 토큰', usage?.total == null ? '미제공' : String(usage.total), 'tokens');
     meta.append(el('p', 'gdcr-caption', usage?.total != null ? '토큰: 별도 API 응답 실측값 · 추정 아님' : record.result ? '토큰: API 응답 미제공 · 추정하지 않음' : '토큰: API 응답 대기 · 추정하지 않음'));
     if (usage) meta.append(el('p', 'gdcr-caption', `입력 ${usage.input ?? '미제공'} · 출력 ${usage.output ?? '미제공'} · 사고 ${usage.thoughts ?? '미제공'}`));
-    const status = el('p', 'gdcr-status', states[record.status] || record.status);
-    status.setAttribute('role', 'status'); meta.append(status);
+    if (record.status !== 'success') {
+      const status = el('p', 'gdcr-status', states[record.status] || record.status);
+      status.setAttribute('role', 'status'); meta.append(status);
+    }
     if (record.reason) meta.append(el('p', 'gdcr-caption', record.reason));
     if (record.error) meta.append(el('p', 'gdcr-caption gdcr-error', record.error));
     if (record.status === 'waiting-response') meta.append(el('p', 'gdcr-caption', '생성 이미지가 이미 보인다면 응답과 프롬프트를 연결하지 못한 상태입니다.'));
@@ -158,8 +156,6 @@
     costs.append(el('h3', 'gdcr-section-title', 'ESTIMATED ENVIRONMENTAL COST'));
     row(costs, '전력 소비량', energy?.wh != null ? energy.wh.toFixed(3) : '미산정', 'Wh');
     row(costs, '탄소배출량', energy?.carbonGrams != null ? energy.carbonGrams.toFixed(3) : '미산정', 'gCO₂e');
-    row(costs, '물 사용량', '미산정', 'mL');
-    costs.append(el('p', 'gdcr-caption', '물 사용량은 검증된 환산계수가 없어 산정하지 않습니다.'));
     box.append(costs);
     const equivalent = el('section', 'gdcr-equivalent');
     equivalent.append(el('h3', 'gdcr-section-title', 'IN EVERYDAY LIFE'), el('p', 'gdcr-caption', '1,000W 전자레인지 사용 시간'));
@@ -173,7 +169,7 @@
     notes.append(el('p', '', '전력·탄소는 가정 기반 추정치입니다. 별도 API 요청만 대상으로 하며 Gemini 웹사이트 생성 비용과 합산하지 않습니다.'));
     notes.append(el('p', '', `전력: 전체 토큰 × ${energy?.whPerToken ?? '미제공'} Wh/token. 사용자 지정 임시 계수이며 출처·Gemini 이미지 생성 적용 타당성은 미검증입니다.`));
     notes.append(el('p', '', `탄소: 전력(Wh) ÷ 1,000 × ${energy?.kgCO2eqPerKwh ?? '미제공'} kg CO₂eq/kWh × 1,000. 미국 기준 사용자 제공 계수이며 출처·기준연도·실제 서버 지역은 미확인입니다.`));
-    notes.append(el('p', '', '전체 토큰은 API 응답값을 그대로 표시하며, 누락 시 합산하거나 추정하지 않습니다. 생성 시각이 응답 데이터에 없으면 미제공으로 표시합니다.'));
+    notes.append(el('p', '', '전체 토큰은 API 응답값을 그대로 표시하며, 누락 시 합산하거나 추정하지 않습니다.'));
     if (record.result) notes.append(el('p', '', `Gemini 화면 생성 이미지: ${record.websiteImages ?? '미제공'}장 · 별도 API 응답 이미지: ${record.result.images}장`));
     box.append(notes);
     if (record.diagnostic) {
