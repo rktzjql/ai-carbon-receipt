@@ -16,7 +16,7 @@ async function harness(restored = []) {
   let tick, responses=[], generationResolve, record, id=0;
   const document={body:node('body'),createElement:node,querySelectorAll(selector){
     if (selector.includes('rich-textarea')) return [input];
-    if (selector==='model-response') return responses;
+    if (selector.startsWith('model-response')) return responses;
     return [];
   },addEventListener(name,fn){events[name]=fn;}};
   const chrome={storage:{onChanged:{addListener(){}}},runtime:{sendMessage(msg){
@@ -93,7 +93,7 @@ test('a waiting receipt appears before any model response is available', async (
 
 test('prompt matching prefers the text child over parent labels', async () => {
   const h=await harness();await h.submit();const {response}=h.response();
-  response.closest=()=>({querySelector:selector=>({innerText:selector==='user-query .query-text'?'숲속 오두막':'You said 숲속 오두막'})});
+  response.closest=()=>({querySelector:()=>({innerText:'You said 숲속 오두막',querySelectorAll:selector=>selector.includes('span')?[{innerText:'숲속 오두막'}]:[]})});
   await h.tick();
   assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
 });
@@ -119,4 +119,29 @@ test('removal of a completed receipt is repaired without regenerating', async ()
   response.children[0].remove();await h.tick();
   assert.ok(response.children.some(child=>child.isConnected));
   assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
+});
+
+test('separate user/model containers use the nearest preceding user message', async () => {
+  const h=await harness();await h.submit();const {response}=h.response();
+  response.closest=()=>null;
+  const old={innerText:'다른 문장'}, current={innerText:'You said 숲속 오두막',querySelectorAll:()=>[{innerText:'숲속 오두막'}]};
+  const read=h.document.querySelectorAll;
+  h.document.querySelectorAll=selector=>selector.startsWith('user-query')?[old,current]:read(selector);
+  response.compareDocumentPosition=()=>2;
+  await h.tick();assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
+});
+
+test('an older matching prompt cannot claim a response following a different user message', async () => {
+  const h=await harness();await h.submit();const {response}=h.response();
+  response.closest=()=>null;response.compareDocumentPosition=()=>2;
+  const read=h.document.querySelectorAll;
+  h.document.querySelectorAll=selector=>selector.startsWith('user-query')?[{innerText:'숲속 오두막'},{innerText:'다른 문장'}]:read(selector);
+  await h.tick();assert.equal(h.messages.some(m=>m.type==='generatedImage'),false);
+  assert.match(text(h.document.body.children[0].box),/연결 진단/);
+});
+
+test('multiline prompt matches split query text lines despite surrounding controls', async () => {
+  const h=await harness();await h.submit('토끼\n경찰복');const {response}=h.response();
+  response.closest=()=>({querySelector:()=>({innerText:'You said 토끼 경찰복 Copy',querySelectorAll:()=>[{innerText:'토끼'},{innerText:'경찰복'}]})});
+  await h.tick();assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
 });

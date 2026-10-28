@@ -1,4 +1,7 @@
 (() => {
+  const responseSelector = 'model-response, [data-message-author-role="assistant"], [data-message-author-role="model"]';
+  const querySelector = 'user-query, [data-message-author-role="user"]';
+  const normalize = text => String(text || '').replace(/[\u200B\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
   let tracking = false;
   let last = null;
   const jobs = new Map();
@@ -27,21 +30,21 @@
     const eventId = crypto.randomUUID();
     last = {prompt, eventId};
 
-    const baseline = new Set(document.querySelectorAll('model-response'));
+    const baseline = new Set(document.querySelectorAll(responseSelector));
     const route = location.href;
     // Verify that Gemini cleared its composer after the submission gesture.
     // A rejected Enter/click only creates a confirmation candidate, never an automatic call.
     let attempts = 0;
     const verify = () => {
       const current = editor();
-      const cleared = current && !(current.value ?? current.innerText ?? '').trim();
+      const cleared = current && !normalize(current.value ?? current.innerText ?? '');
       if (!cleared && ++attempts < 12) { setTimeout(verify, 150); return; }
       info.submission = cleared ? 'verified' : 'unknown';
       chrome.runtime.sendMessage({type: 'capture', eventId, prompt, evidence: info}).then(reply => {
         if (reply?.ok) {
           const item = {eventId, prompt, baseline, route, submission:cleared, deadline: Date.now() + 180000};
           jobs.set(eventId, item);
-          showReceipt(item, {status: cleared ? 'waiting-response' : 'unverified-submission'});
+          showReceipt(item, {status:'waiting-response'});
           while (jobs.size > 20) {
             const oldest = jobs.keys().next().value;
             jobs.get(oldest).host?.remove(); jobs.delete(oldest);
@@ -79,11 +82,17 @@
     const box = receiptHost.box; box.replaceChildren();
     const close = document.createElement('button'); close.textContent = '닫기';
     close.onclick = () => {receiptHost.remove(); item.closed = true;}; box.append(close);
-    const title = document.createElement('h2'); title.textContent = 'Gemini 이미지 영수증'; box.append(title);
+    const title = document.createElement('h2'); title.textContent = 'Gemini 이미지 영수증 · 0.2.2'; box.append(title);
     const line = text => {const p = document.createElement('p'); p.textContent = text; box.append(p);};
     const states = {'waiting-response':'프롬프트 인식 완료 · Gemini 응답 연결 대기', 'waiting-image':'응답 연결 완료 · 생성 이미지 로딩 대기', 'image-detected':'이미지 감지 완료 · 자동 전송 준비 중', 'unverified-submission':'프롬프트는 인식했지만 제출 완료를 확인하지 못했습니다.', 'detection-timeout':'이미지 감지 시간이 지났습니다. API는 호출하지 않았습니다.', dismissed:'API 호출하지 않음', pending:'확장프로그램 패널에서 모델 확인과 별도 유료 호출 동의가 필요합니다.', running:'별도 API 요청 중 · 추가 요금 발생', error:'API 요청 실패', success:'별도 API 이미지 생성 완료', 'no-image':'API 응답에 이미지 없음'};
     line(states[record.status] || record.status);
     if (record.reason) line(record.reason);
+    if (record.diagnostic) {
+      const details = document.createElement('details');
+      const summary = document.createElement('summary'); summary.textContent = '연결 진단';
+      const diagnostic = document.createElement('p'); diagnostic.textContent = record.diagnostic;
+      details.append(summary, diagnostic); box.append(details);
+    }
     if (record.error) line(record.error);
     if (!record.result) {
       if (record.status === 'waiting-response') line('생성 이미지가 이미 보인다면 응답과 프롬프트를 연결하지 못한 상태입니다.');
@@ -103,20 +112,45 @@
     line('물: 미산정 — 검증된 환산계수 없음');
     line('Gemini 웹 응답의 토큰·환경 영향 실측값이 아닙니다. 전력 추정은 별도 API 요청만 대상으로 하며, 웹사이트 생성과 합산하지 않습니다.');
   }
-  const normalize = text => String(text || '').replace(/\s+/g, ' ').trim();
-  function matchesPrompt(response, prompt) {
+  function queryMatches(query, prompt) {
+    if (!query) return false;
+    const expected = normalize(prompt);
+    const nodes = [...(query.querySelectorAll?.('.query-text, .query-text-line, [data-test-id="query-text"], p, div, span') || [])];
+    // Match exact text inside the user turn, excluding labels and action buttons.
+    if ([query, ...nodes].some(node => normalize(node.innerText || node.textContent) === expected)) return true;
+    const lines = [...(query.querySelectorAll?.('.query-text-line') || [])];
+    return lines.length > 0 && normalize(lines.map(node => node.innerText || node.textContent).join('\n')) === expected;
+  }
+  function queryForResponse(response) {
     const turn = response.closest('conversation-container, .conversation-container');
-    const query = turn?.querySelector('user-query .query-text')
-      || turn?.querySelector('user-query [data-test-id="user-query"]')
-      || turn?.querySelector('user-query');
-    return query && normalize(query.innerText || query.textContent) === normalize(prompt);
+    if (turn) {
+      const query = turn.querySelector(querySelector);
+      if (query) return query;
+      // Older UI layouts expose only the inner prompt element.
+      const text = turn.querySelector('user-query .query-text');
+      if (text) return text;
+    }
+    // Some layouts put the user and model turns in separate sibling containers.
+    // Only the nearest preceding user turn can own a response.
+    const before = [...document.querySelectorAll(querySelector)].filter(query => {
+      const order = response.compareDocumentPosition(query);
+      return !(order & 1) && Boolean(order & 2);
+    });
+    return before.at(-1);
+  }
+  function matchesPrompt(response, prompt) {
+    return queryMatches(queryForResponse(response), prompt);
   }
   function bindResponse(item) {
-    const responses = [...document.querySelectorAll('model-response')].filter(el => !item.baseline.has(el));
+    const responses = [...document.querySelectorAll(responseSelector)].filter(el => !item.baseline.has(el));
     const matched = responses.filter(response => matchesPrompt(response, item.prompt));
     // Bind to the exact submitted prompt, including the new-chat URL transition.
     // If Gemini's turn markup changes, stop rather than charge for the wrong turn.
-    if (matched.length !== 1) return null;
+    if (matched.length !== 1) {
+      showReceipt(item, {status:'waiting-response', reason:responses.length ? '응답을 찾았지만 제출한 문장과 아직 연결하지 못했습니다.' : 'Gemini의 새 응답을 기다리고 있습니다.',
+        diagnostic:`새 응답 ${responses.length}개 · 일치하는 사용자 문장 ${matched.length}개 · 사용자 메시지 ${document.querySelectorAll(querySelector).length}개`});
+      return null;
+    }
     const response = matched[0];
     if ([...jobs.values()].some(job => job !== item && job.response === response)) return null;
     if (location.href !== item.route) {
@@ -136,7 +170,7 @@
     if (!response) return;
     item.response = response;
     showReceipt(item, {status:'waiting-image'});
-    const images = [...response.querySelectorAll('generated-image img, [data-test-id="generated-image"] img')]
+    const images = [...response.querySelectorAll('generated-image img, [data-test-id="generated-image"] img, image-generation-content img, .generated-image img')]
       .filter(img => visible(img) && img.complete && img.naturalWidth > 0);
     if (!images.length) return;
     item.response = response;
@@ -164,7 +198,7 @@
     for (const record of reply?.records || []) {
       if (jobs.has(record.eventId)) continue;
       const item = {eventId:record.eventId, prompt:record.prompt, route, sent:true, restored:true};
-      const matched = [...document.querySelectorAll('model-response')].filter(r => matchesPrompt(r, record.prompt));
+      const matched = [...document.querySelectorAll(responseSelector)].filter(r => matchesPrompt(r, record.prompt));
       if (matched.length === 1) item.response = matched[0];
       jobs.set(item.eventId, item);
       showReceipt(item, record);
@@ -176,7 +210,7 @@
     if (polling || !tracking) return;
     polling = true;
     try {
-      await restoreReceipts();
+      await restoreReceipts().catch(() => {});
       for (const item of jobs.values()) {
         if (location.href !== item.route) {
           const before = new URL(item.route), after = new URL(location.href);
@@ -184,7 +218,7 @@
           if (!newChat) {item.host?.remove(); jobs.delete(item.eventId); continue;}
         }
         if (item.sent && !item.response?.isConnected) {
-          const matched = [...document.querySelectorAll('model-response')].filter(r => matchesPrompt(r, item.prompt));
+          const matched = [...document.querySelectorAll(responseSelector)].filter(r => matchesPrompt(r, item.prompt));
           if (matched.length === 1) item.response = matched[0];
           if (item.record) showReceipt(item, item.record);
         }
@@ -198,7 +232,11 @@
           }
         }
       }
-    } catch {} finally {polling = false;}
+    } catch (error) {
+      for (const item of jobs.values()) {
+        if (!item.done && !item.closed) showReceipt(item, {status:'error', error:'화면 감지 연결에 문제가 생겼습니다. Gemini 탭을 새로고침하세요.', diagnostic:String(error.message).slice(0,200)});
+      }
+    } finally {polling = false;}
   }, 1000);
   document.addEventListener('input', e => {
     const input = editor();
