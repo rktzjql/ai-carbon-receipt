@@ -19,6 +19,10 @@ test('worker enforces trust, consent, durable deduplication and exact request', 
   await send({type:'saveSettings',tracking:true,consent:true});
   const capture = {type:'capture',eventId:'11111111-1111-4111-8111-111111111111',prompt:'그림을 만들어줘',evidence:{model:'verified',image:'verified',submission:'verified'}};
   await Promise.all([send(capture,page),send(capture,page)]);
+  assert.equal(calls,0);
+  assert.equal((await send({type:'state'})).records[0].status,'waiting-image');
+  const generated={type:'generatedImage',eventId:capture.eventId,images:1};
+  await Promise.all([send(generated,page),send(generated,page)]);
   assert.equal(calls,1);assert.ok(lastRequest.url.endsWith('models/gemini-3.1-flash-lite-image:generateContent'));
   assert.equal(lastRequest.init.headers['x-goog-api-key'],'fixture-key');
   assert.equal(JSON.parse(lastRequest.init.body).generationConfig.imageConfig.imageSize,'1K');
@@ -28,6 +32,12 @@ test('worker enforces trust, consent, durable deduplication and exact request', 
   const uncertain={...capture,eventId:'22222222-2222-4222-8222-222222222222',evidence:{model:'unknown',image:'uncertain'}};
   await send(uncertain,page);assert.equal(calls,1);
   const id=(await send({type:'state'})).records[0].id;
+  await send({type:'confirm',id,confirmed:true});assert.equal(calls,1);
+  await send({type:'generatedImage',eventId:uncertain.eventId,images:0},page);assert.equal(calls,1);
+  await send({type:'generatedImage',eventId:uncertain.eventId,images:1},page);assert.equal(calls,1);
+  const otherPage={...page,tab:{...page.tab,id:2}};
+  assert.equal((await send({type:'receipt',eventId:uncertain.eventId},otherPage)).record,undefined);
+  assert.equal((await send({type:'receipt',eventId:uncertain.eventId},page)).record.status,'pending');
   assert.equal((await send({type:'confirm',id,confirmed:false})).ok,false);
   await Promise.all([send({type:'confirm',id,confirmed:true}),send({type:'confirm',id,confirmed:true})]);assert.equal(calls,2);
   await send({type:'saveSettings',tracking:false,consent:true});
@@ -43,4 +53,20 @@ test('session history stays bounded for the older Chrome 1 MB quota', async () =
   assert.ok(state.records.length > 0 && state.records.length < 20);
   assert.ok(new TextEncoder().encode(JSON.stringify(state.records)).length <= 350000);
   assert.equal(session.apiKey,'fixture-key');
+});
+
+test('fixed-model setup automatically sends the remembered prompt and returns receipt estimates', async () => {
+  await send({type:'saveSettings',tracking:true,consent:true,fixedModelConsent:true});
+  const eventId=crypto.randomUUID();const before=calls;
+  const prompt='노을 지는 바다를 그려줘';
+  await send({type:'capture',eventId,prompt,evidence:{model:'unknown',submission:'verified',attachments:false}},page);
+  assert.equal(calls,before);
+  await Promise.all([send({type:'generatedImage',eventId,images:1},page),send({type:'generatedImage',eventId,images:1},page)]);
+  assert.equal(calls,before+1);
+  assert.equal(JSON.parse(lastRequest.init.body).contents[0].parts[0].text,prompt);
+  const {record}=await send({type:'receipt',eventId},page);
+  assert.equal(record.status,'success');assert.equal(record.result.usage.total,15);
+  assert.ok(Math.abs(record.result.energy.wh-0.028815)<1e-10);
+  assert.ok(Math.abs(record.result.energy.carbonGrams-0.009825915)<1e-10);
+  assert.equal(record.apiKey,undefined);
 });

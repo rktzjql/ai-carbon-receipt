@@ -2,7 +2,11 @@
 <header><span class="badge">API 대리 측정</span><h1>Gemini Carbon Receipt</h1><p>Nano Banana 2 Lite · 1K</p><nav><a href="options.html" target="_blank">설정 / API 키</a><a href="panel.html" target="_blank">큰 화면으로 열기</a></nav></header>
 <main><aside>표시되는 토큰은 Gemini 웹사이트의 사용량이 아니라, 동일한 텍스트로 실행한 <strong>별도 Gemini API 요청</strong>의 실제 응답입니다. 추가 요금이 발생할 수 있으며 이미지와 사용량은 웹사이트와 다를 수 있습니다. 대화 이력·첨부 파일은 전송하지 않습니다.</aside>
 <p id="keyState"></p><p id="notice" role="status" aria-live="polite"></p>
-<section><h2>1. API 단독 이미지 생성 테스트</h2><p>모델 ID: <code>gemini-3.1-flash-lite-image</code></p><button id="checkModel">API 모델 접근 확인</button><pre id="modelResult"></pre>
-<form id="manualForm"><label for="prompt">이미지 생성 프롬프트</label><textarea id="prompt" rows="4" maxlength="16000" required placeholder="예: 푸른 숲속의 작은 오두막 이미지를 만들어 줘"></textarea><label class="check"><input type="checkbox" id="manualConsent" required>이 프롬프트를 별도 API로 보내 실제 이미지를 생성하며 추가 요금이 발생할 수 있음에 동의합니다.</label><button type="submit">이미지 생성 및 토큰 측정</button></form></section>
-<section><h2>2. 웹사이트 추적</h2><label class="check"><input id="tracking" type="checkbox">Gemini 웹사이트 이미지 요청 감지 켜기</label><label class="check"><input id="consent" type="checkbox">모델·이미지 모드·제출이 확인된 요청을 API에 자동 병렬 전송하는 데 동의합니다. 추가 요금과 프롬프트 재전송을 이해합니다.</label><p>불확실한 요청은 아래 기록에서 직접 확인하세요. 감지가 누락되면 위 단독 테스트에 프롬프트를 붙여넣을 수 있습니다.</p></section>
+<section><h2>자동 이미지 영수증 설정</h2><p>처음에 API 키를 저장하고 아래 항목을 설정하세요. 이후 Gemini에 평소처럼 입력하면, 생성 이미지가 나타난 뒤 같은 프롬프트로 API를 한 번 호출해 응답 아래에 영수증을 표시합니다.</p>
+<label class="check"><input id="tracking" type="checkbox">Gemini 프롬프트와 생성 이미지 감지 켜기</label>
+<label class="check"><input id="consent" type="checkbox">이미지가 나타나면 같은 프롬프트를 별도 API에 자동 전송하는 데 동의합니다. 추가 이미지 생성 요금이 발생할 수 있습니다.</label>
+<label class="check"><input id="fixedModelConsent" type="checkbox">웹사이트 모델을 읽지 못해도 지정 API 모델 gemini-3.1-flash-lite-image로 호출합니다. 웹사이트와 모델·결과가 다를 수 있음을 확인했습니다.</label>
+<p>프롬프트를 다시 입력할 필요가 없습니다. 첨부가 있거나 제출·응답 연결을 확인할 수 없으면 자동 호출을 보류합니다.</p></section>
+<details><summary>선택: API 연결 진단 및 단독 테스트</summary><section><p>모델 ID: <code>gemini-3.1-flash-lite-image</code></p><button id="checkModel">API 모델 접근 확인</button><pre id="modelResult"></pre>
+<form id="manualForm"><label for="prompt">단독 테스트용 프롬프트 (자동 영수증에는 입력 불필요)</label><textarea id="prompt" rows="4" maxlength="16000" required></textarea><label class="check"><input type="checkbox" id="manualConsent" required>별도 API 이미지 생성과 추가 요금에 동의합니다.</label><button type="submit">단독 API 테스트 실행</button></form></section></details>
 <section><div class="row"><h2>API 응답 및 감지 기록</h2><button id="refresh">새로고침</button><button id="clear">기록 지우기</button></div><div id="records"></div></section></main><script type="module" src="panel.js"></script></body></html>

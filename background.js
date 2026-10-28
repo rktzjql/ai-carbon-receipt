@@ -1,5 +1,5 @@
 import {MODEL, API_ROOT, requestBody, summarize, canAuto, cleanError} from './core.js';
-const defaults = {tracking: false, consent: false};
+const defaults = {tracking: false, consent: false, fixedModelConsent: false};
 const initialized = chrome.storage.session.setAccessLevel({accessLevel: 'TRUSTED_CONTEXTS'});
 let queue = Promise.resolve();
 const settings = async () => ({...defaults, ...(await chrome.storage.local.get('settings')).settings});
@@ -30,6 +30,7 @@ async function run(record) {
   if (record.status !== 'pending') return;
   if (!(await chrome.storage.session.get('apiKey')).apiKey) throw new Error('먼저 설정에서 API 키를 입력하세요.');
   const body = requestBody(record.prompt);
+  delete record.reason;
   record.status = 'running'; record.startedAt = Date.now();
   // Persist before the request. A suspended worker never automatically retries an ambiguous result.
   await save(record);
@@ -58,15 +59,38 @@ async function handle(msg, sender) {
     if (seen[id]) return {duplicate: true};
     if (Object.keys(seen).length >= 2000) throw new Error('세션 감지 한도에 도달했습니다. 브라우저를 재시작하세요.');
     seen[id] = true; await chrome.storage.session.set({seen});
-    const record = {id, prompt: msg.prompt, evidence: msg.evidence, source: 'website', status: 'pending', createdAt: Date.now()};
+    const record = {id, prompt: msg.prompt, evidence: msg.evidence, source: 'website', status: 'waiting-image', createdAt: Date.now()};
     await save(record);
-    if (canAuto(config, msg.evidence)) await run(record);
+    return {};
+  }
+  if (msg.type === 'receipt' && website(sender)) {
+    const record = (await records()).find(r => r.id === `${sender.tab.id}:${msg.eventId}`);
+    if (!record) return {};
+    // Only return this tab's requested record; never expose keys or other tabs' history.
+    return {record: {status: record.status, result: record.result, error: record.error, websiteImages: record.websiteImages, reason: record.reason}};
+  }
+  if (msg.type === 'generatedImage' && website(sender)) {
+    const record = (await records()).find(r => r.id === `${sender.tab.id}:${msg.eventId}`);
+    if (!record || record.status !== 'waiting-image' || !(await settings()).tracking) return {};
+    if (!Number.isSafeInteger(msg.images) || msg.images < 1 || msg.images > 100) throw new Error('Invalid image count');
+    record.websiteImages = msg.images;
+    record.evidence = {...record.evidence, image: 'verified'};
+    record.status = 'pending';
+    const config = await settings();
+    if (!config.consent) record.reason = '확장프로그램에서 자동 API 호출 동의를 켜세요.';
+    else if (record.evidence.attachments) record.reason = '첨부 파일은 API에 전달되지 않습니다. 패널에서 직접 확인하세요.';
+    else if (record.evidence.model !== 'verified' && !config.fixedModelConsent) record.reason = '확장프로그램에서 지정 API 모델 사용을 한 번 확인하세요.';
+    await save(record);
+    if (canAuto(config, record.evidence)) {
+      try { await run(record); }
+      catch (error) { record.reason = error.message; await save(record); }
+    }
     return {};
   }
   if (!trusted(sender)) throw new Error('허용되지 않은 메시지 출처');
   switch (msg.type) {
     case 'state': return {settings: await settings(), records: await records(), hasKey: Boolean((await chrome.storage.session.get('apiKey')).apiKey)};
-    case 'saveSettings': await chrome.storage.local.set({settings: {tracking: msg.tracking === true, consent: msg.consent === true}}); return {};
+    case 'saveSettings': await chrome.storage.local.set({settings: {tracking: msg.tracking === true, consent: msg.consent === true, fixedModelConsent: msg.fixedModelConsent === true}}); return {};
     case 'saveKey': if (typeof msg.key !== 'string' || !msg.key.trim()) throw new Error('키를 입력하세요.'); await chrome.storage.session.set({apiKey: msg.key.trim()}); return {};
     case 'clearKey': await chrome.storage.session.remove('apiKey'); return {};
     case 'checkModel': {
@@ -93,8 +117,8 @@ async function handle(msg, sender) {
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
   // Read-only state queries remain responsive while a generation is in flight.
   const work = () => handle(msg, sender);
-  const result = ['state', 'trackingStatus'].includes(msg?.type) ? work() : queue.then(work);
-  if (!['state', 'trackingStatus'].includes(msg?.type)) queue = result.catch(() => {});
+  const result = ['state', 'trackingStatus', 'receipt'].includes(msg?.type) ? work() : queue.then(work);
+  if (!['state', 'trackingStatus', 'receipt'].includes(msg?.type)) queue = result.catch(() => {});
   result.then(value => respond({ok: true, ...value}), error => respond({ok: false, error: error.message}));
   return true;
 });

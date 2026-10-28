@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {requestBody, usageFrom, summarize, canAuto, cleanError, MODEL} from '../core.js';
+import {requestBody, usageFrom, summarize, canAuto, cleanError, MODEL, energyEstimate} from '../core.js';
 import '../detector.js';
 test('exact requested model, 1K and actual image response requested', () => {
   assert.equal(MODEL, 'gemini-3.1-flash-lite-image');
@@ -37,3 +37,31 @@ test('model ambiguity and text mentions cannot authorize automatic image generat
   assert.equal(d.imageState('숲속 오두막',true),'verified');
 });
 test('errors redact supplied key',()=>assert.equal(cleanError('bad secret secret','secret'),'bad [REDACTED] [REDACTED]'));
+
+test('provisional energy uses only actual API total tokens and preserves missing usage', () => {
+  assert.ok(Math.abs(energyEstimate(1513).wh - 2.906473) < 1e-10);
+  assert.equal(energyEstimate(0).wh, 0);
+  for (const value of [null, undefined, -1, NaN, '1513']) assert.equal(energyEstimate(value).wh, null);
+  assert.equal(summarize({usageMetadata:{promptTokenCount:10,candidatesTokenCount:20}}).energy.wh, null);
+  const result = summarize({usageMetadata:{totalTokenCount:1513}});
+  assert.equal(result.energy.verified, false);
+  assert.equal(result.energy.basis, 'separate-api-total-tokens');
+});
+
+test('US carbon scenario converts Wh to kWh and kilograms to grams without filling missing totals', () => {
+  assert.ok(Math.abs(energyEstimate(1513).carbonGrams - 0.991107293) < 1e-10);
+  assert.equal(energyEstimate(0).carbonGrams, 0);
+  assert.equal(energyEstimate(1513).kgCO2eqPerKwh, 0.341);
+  for (const value of [null, undefined, -1, NaN, '1513']) assert.equal(energyEstimate(value).carbonGrams, null);
+  assert.equal(summarize({usageMetadata:{promptTokenCount:10,candidatesTokenCount:20}}).energy.carbonGrams, null);
+});
+
+test('one-time fixed API model consent allows unknown website model but preserves other gates', () => {
+  const settings={tracking:true,consent:true,fixedModelConsent:true};
+  const evidence={model:'unknown',image:'verified',submission:'verified',attachments:false};
+  assert.equal(canAuto(settings,evidence),true);
+  assert.equal(canAuto({...settings,fixedModelConsent:false},evidence),false);
+  assert.equal(canAuto({...settings,consent:false},evidence),false);
+  assert.equal(canAuto(settings,{...evidence,attachments:true}),false);
+  assert.equal(canAuto(settings,{...evidence,submission:'unknown'}),false);
+});

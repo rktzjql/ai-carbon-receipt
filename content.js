@@ -1,6 +1,7 @@
 (() => {
   let tracking = false;
   let last = null;
+  const jobs = new Map();
   const visible = el => el && el.getClientRects().length > 0 && el.getAttribute('aria-hidden') !== 'true';
   chrome.runtime.sendMessage({type: 'trackingStatus'}).then(x => { tracking = x?.tracking === true; }).catch(() => {});
   chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.settings) tracking = changes.settings.newValue?.tracking === true; });
@@ -20,11 +21,14 @@
     const prompt = (input?.value ?? input?.innerText ?? '').trim();
     if (!prompt || prompt.length > 16000) return;
     const info = evidence(prompt);
-    if (info.image === 'none') return;
+    // Image output, rather than words in the prompt, decides whether to call the API.
     // One composer generation: keyboard/click/form events share this ID until edited/reset.
     if (last?.prompt === prompt) return;
     const eventId = crypto.randomUUID();
     last = {prompt, eventId};
+
+    const baseline = new Set(document.querySelectorAll('model-response'));
+    const route = location.href;
     // Verify that Gemini cleared its composer after the submission gesture.
     // A rejected Enter/click only creates a confirmation candidate, never an automatic call.
     let attempts = 0;
@@ -33,10 +37,115 @@
       const cleared = current && !(current.value ?? current.innerText ?? '').trim();
       if (!cleared && ++attempts < 12) { setTimeout(verify, 150); return; }
       info.submission = cleared ? 'verified' : 'unknown';
-      chrome.runtime.sendMessage({type: 'capture', eventId, prompt, evidence: info}).catch(() => {});
+      chrome.runtime.sendMessage({type: 'capture', eventId, prompt, evidence: info}).then(reply => {
+        if (reply?.ok && cleared) {
+          jobs.set(eventId, {eventId, prompt, baseline, route, deadline: Date.now() + 180000});
+          while (jobs.size > 20) jobs.delete(jobs.keys().next().value);
+        }
+      }).catch(() => {});
     };
     setTimeout(verify, 150);
   }
+  function showReceipt(item, record) {
+    if (item.closed || !item.response?.isConnected) return;
+    const signature = JSON.stringify(record);
+    if (item.signature === signature && item.host?.isConnected) return;
+    item.signature = signature;
+    let receiptHost = item.host;
+    if (!receiptHost?.isConnected) {
+      receiptHost = document.createElement('aside');
+      receiptHost.setAttribute('aria-label', 'Gemini 탄소 영수증');
+      const shadow = receiptHost.attachShadow({mode: 'closed'});
+      const style = document.createElement('style');
+      style.textContent = ':host{display:block;margin:16px 0;width:100%;max-width:680px} section{background:#fff;color:#18251b;border:1px solid #56765d;border-radius:12px;padding:16px;font:14px/1.5 system-ui;box-shadow:0 3px 18px #0003;max-height:35vh;overflow:auto}h2{font-size:16px;margin:0 0 8px}p{margin:6px 0}button{float:right}';
+      const box = document.createElement('section');
+      shadow.append(style, box); receiptHost.box = box;
+      item.response.append(receiptHost);
+      item.host = receiptHost;
+    }
+    const box = receiptHost.box; box.replaceChildren();
+    const close = document.createElement('button'); close.textContent = '닫기';
+    close.onclick = () => {receiptHost.remove(); item.closed = true;}; box.append(close);
+    const title = document.createElement('h2'); title.textContent = 'Gemini 이미지 영수증'; box.append(title);
+    const line = text => {const p = document.createElement('p'); p.textContent = text; box.append(p);};
+    const states = {'waiting-image':'이미지 감지 완료 · 자동 전송 준비 중', dismissed:'API 호출하지 않음', pending:'확장프로그램 패널에서 모델 확인과 별도 유료 호출 동의가 필요합니다.', running:'별도 API 요청 중 · 추가 요금 발생', error:'API 요청 실패', success:'별도 API 이미지 생성 완료', 'no-image':'API 응답에 이미지 없음'};
+    line(states[record.status] || record.status);
+    if (record.reason) line(record.reason);
+    if (record.error) line(record.error);
+    if (record.result) {
+      const u = record.result.usage;
+      line(`토큰: 별도 API 실측 · 입력 ${u.input ?? '미제공'} / 출력 ${u.output ?? '미제공'} / 사고 ${u.thoughts ?? '미제공'} / 전체 ${u.total ?? '미제공'}`);
+      line(`Gemini 화면 생성 이미지: ${record.websiteImages}장 · 별도 API 응답 이미지: ${record.result.images}장`);
+    }
+    const energy = record.result?.energy;
+    line(energy?.wh != null ? `전력: 약 ${energy.wh.toFixed(3)} Wh · 가정 기반 추정` : '전력: 미산정 — 별도 API 전체 토큰 미제공');
+    line('계산: 별도 API 전체 토큰 × 0.001921 Wh/token · 사용자 지정 임시 계수, 출처·Gemini 이미지 생성 적용 타당성 미검증');
+    line(energy?.carbonGrams != null ? `탄소: 약 ${energy.carbonGrams.toFixed(3)} g CO₂eq · 가정 기반 추정` : '탄소: 미산정 — 계산에 필요한 값 없음');
+    line('미국 가정: 0.341 kg CO₂eq/kWh · 사용자 제공 계수, 출처·기준연도·실제 서버 지역 미확인');
+    line('물: 미산정 — 검증된 환산계수 없음');
+    line('Gemini 웹 응답의 토큰·환경 영향 실측값이 아닙니다. 전력 추정은 별도 API 요청만 대상으로 하며, 웹사이트 생성과 합산하지 않습니다.');
+  }
+  const normalize = text => String(text || '').replace(/\s+/g, ' ').trim();
+  function bindResponse(item) {
+    const responses = [...document.querySelectorAll('model-response')].filter(el => !item.baseline.has(el));
+    const matched = responses.filter(response => {
+      const turn = response.closest('conversation-container, .conversation-container');
+      const query = turn?.querySelector('user-query .query-text, user-query [data-test-id="user-query"], user-query');
+      return query && normalize(query.innerText || query.textContent) === normalize(item.prompt);
+    });
+    // Bind to the exact submitted prompt, including the new-chat URL transition.
+    // If Gemini's turn markup changes, stop rather than charge for the wrong turn.
+    if (matched.length !== 1) return null;
+    const response = matched[0];
+    if ([...jobs.values()].some(job => job !== item && job.response === response)) return null;
+    if (location.href !== item.route) {
+      const before = new URL(item.route);
+      const after = new URL(location.href);
+      if (!/^\/app\/?$/.test(before.pathname) || !/^\/app\/[^/]+$/.test(after.pathname)) return null;
+      item.route = location.href;
+    }
+    return response;
+  }
+  function inspectOutput(item) {
+    if (item.sent || Date.now() > item.deadline) return;
+    const response = bindResponse(item);
+    if (!response) return;
+    const images = [...response.querySelectorAll('generated-image img, [data-test-id="generated-image"] img')]
+      .filter(img => visible(img) && img.complete && img.naturalWidth > 0);
+    if (!images.length) return;
+    item.response = response;
+    item.sent = true;
+    showReceipt(item, {status:'waiting-image'});
+    // Do not block polling while the worker waits for the API response.
+    chrome.runtime.sendMessage({type:'generatedImage', eventId:item.eventId, images:images.length})
+      .then(reply => {
+        if (!reply?.ok) {
+          item.done = true;
+          showReceipt(item, {status:'error', error:reply?.error || '확장프로그램 응답이 없습니다.'});
+        }
+      }).catch(() => {
+        item.done = true;
+        showReceipt(item, {status:'error', error:'확장프로그램 연결이 끊겼습니다. 중복 과금을 막기 위해 자동 재시도하지 않습니다.'});
+      });
+  }
+  let polling = false;
+  setInterval(async () => {
+    if (polling || !tracking) return;
+    polling = true;
+    try {
+      for (const item of jobs.values()) {
+        if (item.done) continue;
+        inspectOutput(item);
+        if (item.sent && location.href === item.route && item.response?.isConnected) {
+          const response = await chrome.runtime.sendMessage({type:'receipt', eventId:item.eventId});
+          if (response?.record && !item.done) {
+            showReceipt(item, response.record);
+            if (['success','no-image','error','dismissed'].includes(response.record.status)) item.done = true;
+          }
+        }
+      }
+    } catch {} finally {polling = false;}
+  }, 1000);
   document.addEventListener('input', e => {
     const input = editor();
     if (input && (e.target === input || input.contains(e.target))) last = null;
