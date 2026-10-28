@@ -54,15 +54,53 @@
     };
     setTimeout(verify, 150);
   }
+  // Receipt-only positioning: leave Gemini's image, containers and styles untouched.
+  function positionReceipt(item) {
+    const host = item.host;
+    if (!host?.isConnected || item.closed) return;
+    const inline = item.response?.isConnected;
+    const image = inline && [...item.response.querySelectorAll('generated-image img, [data-test-id="generated-image"] img, image-generation-content img, .generated-image img')]
+      .find(img => img.complete && img.naturalWidth > 0 && visible(img));
+    const rect = image?.getBoundingClientRect?.();
+    const viewportWidth = document.documentElement?.clientWidth;
+    const viewportHeight = document.documentElement?.clientHeight;
+    const sideWidth = rect ? Math.min(350, viewportWidth - rect.right - 32) : 0;
+    const beside = Boolean(rect && rect.width > 0 && rect.height >= 180 && sideWidth >= 320);
+    host.toggleAttribute('data-floating', !inline);
+    host.toggleAttribute('data-beside', beside);
+    host.toggleAttribute('data-offscreen', beside && (rect.bottom <= 16 || rect.top >= viewportHeight - 16));
+    const parent = beside || !inline ? document.body : item.response;
+    if (host.parentNode !== parent) parent.append(host);
+    if (beside) {
+      const top = Math.max(16, rect.top);
+      host.style.setProperty('--gdcr-width', `${sideWidth}px`);
+      host.style.setProperty('--gdcr-left', `${rect.right + 16}px`);
+      host.style.setProperty('--gdcr-top', `${top}px`);
+      host.style.setProperty('--gdcr-side-height', `${Math.max(0, Math.min(rect.bottom, viewportHeight - 16) - top)}px`);
+      host.style.removeProperty('margin-left');
+    } else if (inline && rect && viewportWidth) {
+      // On narrow screens align the below-image receipt with the image's left edge.
+      const parentRect = item.response.getBoundingClientRect();
+      const offset = Math.max(0, Math.min(rect.left - parentRect.left, parentRect.width - Math.min(350, parentRect.width)));
+      host.style.setProperty('margin-left', `${offset}px`);
+    } else {
+      host.style?.removeProperty('margin-left');
+    }
+  }
+  let layoutFrame = false;
+  function scheduleReceiptLayout() {
+    if (layoutFrame) return;
+    layoutFrame = true;
+    const update = () => {layoutFrame = false; for (const item of jobs.values()) positionReceipt(item);};
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(update); else update();
+  }
+  document.addEventListener('scroll', scheduleReceiptLayout, {capture:true, passive:true});
+  globalThis.addEventListener?.('resize', scheduleReceiptLayout, {passive:true});
   function showReceipt(item, record) {
     if (item.closed) return;
     item.record = record;
     const inline = item.response?.isConnected;
-    if (item.host?.isConnected) {
-      item.host.toggleAttribute('data-floating', !inline);
-      const parent = inline ? item.response : document.body;
-      if (item.host.parentNode !== parent) parent.append(item.host);
-    }
+    positionReceipt(item);
     const signature = JSON.stringify(record);
     if (item.signature === signature && item.host?.isConnected) return;
     item.signature = signature;
@@ -76,6 +114,9 @@
       style.textContent = `
         :host{all:initial;display:block;width:min(350px,100%);margin:20px 0;color-scheme:light;contain:style}
         :host([data-floating]){position:fixed;bottom:16px;right:16px;width:min(350px,calc(100vw - 32px));z-index:2147483647}
+        :host([data-beside]){position:fixed;left:var(--gdcr-left);top:var(--gdcr-top);width:var(--gdcr-width);max-width:calc(100vw - 32px);margin:0;z-index:100}
+        :host([data-offscreen]){visibility:hidden;pointer-events:none}
+        :host([data-beside]) .gdcr-paper{max-height:var(--gdcr-side-height);overflow:auto;overscroll-behavior:contain}
         .gdcr-paper,.gdcr-paper *{box-sizing:border-box}
         .gdcr-paper{position:relative;background:#fbf7e9;color:#20241f;border:1px solid #c9c6b8;padding:24px 22px 20px;font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;overflow-wrap:anywhere;isolation:isolate}
         :host([data-floating]) .gdcr-paper{max-height:75vh;max-height:75dvh;overflow:auto}
@@ -115,6 +156,7 @@
       shadow.append(style, box); receiptHost.box = box;
       (inline ? item.response : document.body).append(receiptHost);
       item.host = receiptHost;
+      positionReceipt(item);
     }
     const box = receiptHost.box; box.replaceChildren();
     const el = (tag, className, text) => {

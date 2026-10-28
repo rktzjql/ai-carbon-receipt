@@ -5,7 +5,10 @@ import vm from 'node:vm';
 import '../detector.js';
 
 function node(tag = '') {
-  return {tag, children:[], isConnected:true, textContent:'', setAttribute(){}, toggleAttribute(){},
+  const attrs=new Map(),styles=new Map();
+  return {tag, children:[], isConnected:true, textContent:'',
+    setAttribute(name,value){attrs.set(name,value);}, toggleAttribute(name,on){if(on)attrs.set(name,'');else attrs.delete(name);},hasAttribute(name){return attrs.has(name);},
+    style:{setProperty(name,value){styles.set(name,value);},removeProperty(name){styles.delete(name);},getPropertyValue(name){return styles.get(name);}},
     append(...items){for(const item of items){if(item.parentNode) item.parentNode.children=item.parentNode.children.filter(x=>x!==item); item.parentNode=this;this.children.push(item);}}, replaceChildren(...items){this.children=items;},
     attachShadow(){this.shadow=node('shadow');return this.shadow;}, remove(){this.isConnected=false;}};
 }
@@ -162,4 +165,30 @@ test('paper receipt preserves zero results and omits removed presentation fields
     assert.doesNotMatch(output,/생성 시각|물 사용량|별도 API 이미지 생성 완료/);
     assert.deepEqual(record,original);
   }
+});
+
+test('receipt sits beside its image, follows scrolling, and stacks below when space is limited', async () => {
+  const h=await harness();h.document.documentElement={clientWidth:1920,clientHeight:1040};
+  await h.submit();const {response,image}=h.response();
+  const rect={left:729,right:1508,top:298,bottom:724,width:779,height:426};
+  image.getBoundingClientRect=()=>rect;
+  response.getBoundingClientRect=()=>({left:320,width:1500});
+  await h.tick();
+  const receipt=h.document.body.children[0];
+  assert.ok(receipt.hasAttribute('data-beside'));
+  assert.equal(receipt.style.getPropertyValue('--gdcr-left'),'1524px');
+  assert.equal(receipt.style.getPropertyValue('--gdcr-top'),'298px');
+  assert.equal(receipt.style.getPropertyValue('--gdcr-width'),'350px');
+  rect.top=198;rect.bottom=624;h.events.scroll();
+  assert.equal(receipt.style.getPropertyValue('--gdcr-top'),'198px');
+  h.document.documentElement.clientWidth=1870;h.events.scroll();
+  assert.equal(receipt.style.getPropertyValue('--gdcr-width'),'330px');
+  rect.top=-500;rect.bottom=-74;h.events.scroll();
+  assert.ok(receipt.hasAttribute('data-offscreen'));
+  rect.top=198;rect.bottom=624;h.document.documentElement.clientWidth=1000;h.events.scroll();
+  assert.equal(receipt.hasAttribute('data-beside'),false);
+  assert.equal(receipt.hasAttribute('data-offscreen'),false);
+  assert.equal(receipt.parentNode,response);
+  assert.equal(receipt.style.getPropertyValue('margin-left'),'409px');
+  assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
 });
