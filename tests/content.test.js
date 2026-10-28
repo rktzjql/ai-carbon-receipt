@@ -68,7 +68,10 @@ test('new-chat route change, image loading, one API call and inline receipt whil
   assert.match(text(receipt.box),/약 8\.27초/);
   assert.match(text(receipt.box),/별도 API 응답 실측값/);
   assert.match(text(receipt.box),/SAVE THE PLANET/);
-  receipt.box.children[0].onclick();await h.tick();assert.equal(receipt.isConnected,false);
+  receipt.box.children[0].onclick();await h.tick();assert.equal(receipt.isConnected,true);
+  assert.ok(receipt.hasAttribute('data-collapsed'));
+  receipt.box.children[0].onclick();assert.equal(receipt.hasAttribute('data-collapsed'),false);
+  assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
 });
 
 test('old images and a different prompt cannot trigger API calls', async () => {
@@ -190,5 +193,23 @@ test('receipt sits beside its image, follows scrolling, and stacks below when sp
   assert.equal(receipt.hasAttribute('data-offscreen'),false);
   assert.equal(receipt.parentNode,response);
   assert.equal(receipt.style.getPropertyValue('margin-left'),'409px');
+  assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
+});
+
+test('collapsed receipt keeps updating and can reopen without another API request', async () => {
+  const h=await harness();await h.submit();const {response}=h.response();await h.tick();
+  let receipt=response.children[0];receipt.box.children[0].onclick();
+  assert.ok(receipt.hasAttribute('data-collapsed'));
+  assert.match(receipt.box.children[0].textContent,/영수증 보기/);
+  h.finish({status:'success',result:{images:1,usage:{total:100},energy:{wh:0.1518,carbonGrams:0.0517638}}});
+  await h.tick();
+  assert.ok(receipt.hasAttribute('data-collapsed'));
+  assert.match(text(receipt.box),/0\.152\s+Wh/);
+  receipt.remove();await h.tick();
+  receipt=response.children.find(child=>child.isConnected);
+  assert.ok(receipt.hasAttribute('data-collapsed'));
+  receipt.box.children[0].onclick();
+  assert.equal(receipt.hasAttribute('data-collapsed'),false);
+  assert.match(receipt.box.children[0].textContent,/접기/);
   assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
 });

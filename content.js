@@ -122,6 +122,10 @@
         :host([data-floating]) .gdcr-paper{max-height:75vh;max-height:75dvh;overflow:auto}
         .gdcr-paper::after{content:"";display:block;margin:20px -22px -20px;height:6px;background:linear-gradient(135deg,#c9c6b8 25%,transparent 25%) 0 0/8px 8px,linear-gradient(225deg,#c9c6b8 25%,transparent 25%) 0 0/8px 8px;transform:rotate(180deg)}
         .gdcr-close{display:block;margin:-14px -12px 4px auto;padding:5px 8px;border:0;border-radius:2px;background:transparent;color:#4b5047;font:inherit;font-size:11px;cursor:pointer}
+        :host([data-collapsed]) .gdcr-paper{padding:10px 14px}
+        :host([data-collapsed]) .gdcr-paper>:not(.gdcr-toggle){display:none}
+        :host([data-collapsed]) .gdcr-paper::after{display:none}
+        :host([data-collapsed]) .gdcr-toggle{margin:0;width:100%;text-align:center;color:#214c3c;font-size:12px}
         .gdcr-close:hover{background:#e7e5d7;color:#163d2c}
         .gdcr-close:focus-visible,.gdcr-details summary:focus-visible{outline:2px solid #214c3c;outline-offset:3px}
         .gdcr-header{text-align:center;padding-bottom:18px;border-bottom:1px solid #626b5e}
@@ -164,9 +168,15 @@
       if (text !== undefined) node.textContent = text;
       return node;
     };
-    const close = el('button', 'gdcr-close', '닫기'); close.type = 'button';
-    close.setAttribute('aria-label', '영수증 닫기');
-    close.onclick = () => {receiptHost.remove(); item.closed = true;}; box.append(close);
+    const toggle = el('button', 'gdcr-close gdcr-toggle'); toggle.type = 'button';
+    const updateToggle = () => {
+      receiptHost.toggleAttribute('data-collapsed', item.collapsed === true);
+      toggle.textContent = item.collapsed ? '영수증 보기 ▾' : '접기 ▴';
+      toggle.setAttribute('aria-label', item.collapsed ? '영수증 펼치기' : '영수증 접기');
+      toggle.setAttribute('aria-expanded', String(!item.collapsed));
+    };
+    toggle.onclick = () => {item.collapsed = !item.collapsed; updateToggle(); positionReceipt(item);};
+    updateToggle(); box.append(toggle);
     const header = el('header', 'gdcr-header');
     const leaf = el('span', 'gdcr-leaf'); leaf.setAttribute('aria-hidden', 'true');
     header.append(leaf, el('h2', 'gdcr-title', 'AI CARBON RECEIPT'), el('p', 'gdcr-subtitle', 'THE HIDDEN COST OF GENERATION'));
