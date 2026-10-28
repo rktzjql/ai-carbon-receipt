@@ -70,3 +70,18 @@ test('fixed-model setup automatically sends the remembered prompt and returns re
   assert.ok(Math.abs(record.result.energy.carbonGrams-0.009825915)<1e-10);
   assert.equal(record.apiKey,undefined);
 });
+
+test('response evidence recovers unknown submission and restores only same-tab same-page receipts', async () => {
+  await send({type:'saveSettings',tracking:true,consent:true,fixedModelConsent:true});
+  const eventId=crypto.randomUUID(),before=calls;
+  await send({type:'capture',eventId,prompt:'경찰복을 입은 토끼 그려줘',evidence:{submission:'unknown',model:'unknown'}},page);
+  assert.equal(calls,before);
+  await send({type:'generatedImage',eventId,images:1,submissionVerified:true},page);
+  assert.equal(calls,before+1);
+  const reply=await send({type:'receipts'},page);
+  assert.equal(reply.records.find(r=>r.eventId===eventId).status,'success');
+  assert.equal(reply.records.find(r=>r.eventId===eventId).apiKey,undefined);
+  assert.equal((await send({type:'receipts'},{...page,tab:{...page.tab,id:999}})).records.length,0);
+  assert.equal((await send({type:'receipts'},{...page,url:'https://gemini.google.com/app/other'})).records.length,0);
+  assert.equal((await send({type:'receipts'},{...page,frameId:1})).ok,false);
+});

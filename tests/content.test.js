@@ -5,22 +5,23 @@ import vm from 'node:vm';
 import '../detector.js';
 
 function node(tag = '') {
-  return {tag, children:[], isConnected:true, textContent:'', setAttribute(){},
-    append(...items){this.children.push(...items);}, replaceChildren(...items){this.children=items;},
+  return {tag, children:[], isConnected:true, textContent:'', setAttribute(){}, toggleAttribute(){},
+    append(...items){for(const item of items){if(item.parentNode) item.parentNode.children=item.parentNode.children.filter(x=>x!==item); item.parentNode=this;this.children.push(item);}}, replaceChildren(...items){this.children=items;},
     attachShadow(){this.shadow=node('shadow');return this.shadow;}, remove(){this.isConnected=false;}};
 }
-async function harness() {
+async function harness(restored = []) {
   const events={}, timers=[], messages=[];
   const location={href:'https://gemini.google.com/app'};
   const input={value:'숲속 오두막',getClientRects:()=>[1],getAttribute:()=>null,contains:()=>false};
   let tick, responses=[], generationResolve, record, id=0;
-  const document={createElement:node,querySelectorAll(selector){
+  const document={body:node('body'),createElement:node,querySelectorAll(selector){
     if (selector.includes('rich-textarea')) return [input];
     if (selector==='model-response') return responses;
     return [];
   },addEventListener(name,fn){events[name]=fn;}};
   const chrome={storage:{onChanged:{addListener(){}}},runtime:{sendMessage(msg){
     messages.push(msg);
+    if (msg.type==='receipts') return Promise.resolve({records:restored});
     if (msg.type==='generatedImage') {record={status:'running'};return new Promise(resolve=>{generationResolve=resolve;});}
     return Promise.resolve(msg.type==='trackingStatus'?{tracking:true}:msg.type==='receipt'?{ok:true,record}:{ok:true});
   }}};
@@ -29,10 +30,12 @@ async function harness() {
     setTimeout:fn=>timers.push(fn),setInterval:fn=>{tick=fn;},Date
   });
   await Promise.resolve();
-  return {messages,location,input,events,
-    async submit(prompt='숲속 오두막') {
+  return {messages,location,input,events,document,
+    async submit(prompt='숲속 오두막', cleared=true) {
       input.value=prompt;events.input({target:input});events.keydown({key:'Enter',target:input});
-      input.value='';timers.shift()();await Promise.resolve();await Promise.resolve();
+      if(cleared) input.value='';
+      while(timers.length) timers.shift()();
+      await Promise.resolve();await Promise.resolve();
     },
     response(prompt='숲속 오두막',loaded=true) {
       const image={complete:loaded,naturalWidth:512,getClientRects:()=>[1],getAttribute:()=>null};
@@ -79,4 +82,41 @@ test('successive image responses retain their own receipts without resending ear
   await h.submit('바닷가');const second=h.response('바닷가');await h.tick();
   assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,2);
   assert.equal(first.response.children.length,1);assert.equal(second.response.children.length,1);
+});
+
+test('a waiting receipt appears before any model response is available', async () => {
+  const h=await harness();await h.submit();
+  assert.equal(h.document.body.children.length,1);
+  assert.match(text(h.document.body.children[0].box),/프롬프트 인식 완료/);
+  assert.equal(h.messages.some(m=>m.type==='generatedImage'),false);
+});
+
+test('prompt matching prefers the text child over parent labels', async () => {
+  const h=await harness();await h.submit();const {response}=h.response();
+  response.closest=()=>({querySelector:selector=>({innerText:selector==='user-query .query-text'?'숲속 오두막':'You said 숲속 오두막'})});
+  await h.tick();
+  assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
+});
+
+test('missed composer clearing is recovered by a matching new response with a loaded image', async () => {
+  const h=await harness();await h.submit('경찰복을 입은 토끼 그려줘',false);
+  assert.equal(h.messages.find(m=>m.type==='capture').evidence.submission,'unknown');
+  await h.tick();assert.equal(h.messages.some(m=>m.type==='generatedImage'),false);
+  h.response('경찰복을 입은 토끼 그려줘');await h.tick();
+  assert.equal(h.messages.find(m=>m.type==='generatedImage').submissionVerified,true);
+});
+
+test('successful session receipt restores after page reload without another API call', async () => {
+  const h=await harness([{eventId:'previous',prompt:'숲속 오두막',status:'success',websiteImages:1,result:{images:1,usage:{total:1513},energy:{wh:2.906473,carbonGrams:0.991107293}}}]);
+  const {response}=h.response();await h.tick();
+  assert.match(text(response.children[0].box),/0.991 g/);
+  assert.equal(h.messages.some(m=>m.type==='generatedImage'),false);
+});
+
+test('removal of a completed receipt is repaired without regenerating', async () => {
+  const h=await harness();await h.submit();const {response}=h.response();await h.tick();
+  h.finish({status:'success'});await h.tick();
+  response.children[0].remove();await h.tick();
+  assert.ok(response.children.some(child=>child.isConnected));
+  assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
 });

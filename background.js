@@ -59,9 +59,15 @@ async function handle(msg, sender) {
     if (seen[id]) return {duplicate: true};
     if (Object.keys(seen).length >= 2000) throw new Error('세션 감지 한도에 도달했습니다. 브라우저를 재시작하세요.');
     seen[id] = true; await chrome.storage.session.set({seen});
-    const record = {id, prompt: msg.prompt, evidence: msg.evidence, source: 'website', status: 'waiting-image', createdAt: Date.now()};
+    const record = {id, prompt: msg.prompt, evidence: msg.evidence, source: 'website', pageUrl: sender.url, status: 'waiting-image', createdAt: Date.now()};
     await save(record);
     return {};
+  }
+  if (msg.type === 'receipts' && website(sender)) {
+    const prefix = `${sender.tab.id}:`;
+    const matching = (await records()).filter(r => r.source === 'website' && r.id.startsWith(prefix) && r.pageUrl === sender.url && r.websiteImages > 0);
+    return {records: matching.map(r => ({eventId:r.id.slice(prefix.length), prompt:r.prompt,
+      status:r.status, result:r.result, error:r.error, reason:r.reason, websiteImages:r.websiteImages}))};
   }
   if (msg.type === 'receipt' && website(sender)) {
     const record = (await records()).find(r => r.id === `${sender.tab.id}:${msg.eventId}`);
@@ -73,8 +79,9 @@ async function handle(msg, sender) {
     const record = (await records()).find(r => r.id === `${sender.tab.id}:${msg.eventId}`);
     if (!record || record.status !== 'waiting-image' || !(await settings()).tracking) return {};
     if (!Number.isSafeInteger(msg.images) || msg.images < 1 || msg.images > 100) throw new Error('Invalid image count');
+    record.pageUrl = sender.url;
     record.websiteImages = msg.images;
-    record.evidence = {...record.evidence, image: 'verified'};
+    record.evidence = {...record.evidence, image: 'verified', ...(msg.submissionVerified === true ? {submission:'verified'} : {})};
     record.status = 'pending';
     const config = await settings();
     if (!config.consent) record.reason = '확장프로그램에서 자동 API 호출 동의를 켜세요.';
@@ -117,8 +124,8 @@ async function handle(msg, sender) {
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
   // Read-only state queries remain responsive while a generation is in flight.
   const work = () => handle(msg, sender);
-  const result = ['state', 'trackingStatus', 'receipt'].includes(msg?.type) ? work() : queue.then(work);
-  if (!['state', 'trackingStatus', 'receipt'].includes(msg?.type)) queue = result.catch(() => {});
+  const result = ['state', 'trackingStatus', 'receipt', 'receipts'].includes(msg?.type) ? work() : queue.then(work);
+  if (!['state', 'trackingStatus', 'receipt', 'receipts'].includes(msg?.type)) queue = result.catch(() => {});
   result.then(value => respond({ok: true, ...value}), error => respond({ok: false, error: error.message}));
   return true;
 });
