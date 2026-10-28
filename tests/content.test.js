@@ -61,7 +61,10 @@ test('new-chat route change, image loading, one API call and inline receipt whil
   assert.match(text(receipt.box),/API 요청 중/);
   h.finish({status:'success',websiteImages:1,result:{images:1,usage:{input:13,output:1500,total:1513},energy:{wh:2.906473,carbonGrams:0.991107293}}});
   await h.tick();
-  assert.match(text(receipt.box),/1513/);assert.match(text(receipt.box),/2.906 Wh/);assert.match(text(receipt.box),/0.991 g/);
+  assert.match(text(receipt.box),/1513/);assert.match(text(receipt.box),/2\.906\s+Wh/);assert.match(text(receipt.box),/0\.991\s+gCO₂e/);
+  assert.match(text(receipt.box),/약 10\.46초/);
+  assert.match(text(receipt.box),/별도 API 응답 실측값/);
+  assert.match(text(receipt.box),/SAVE THE PLANET/);
   receipt.box.children[0].onclick();await h.tick();assert.equal(receipt.isConnected,false);
 });
 
@@ -109,7 +112,7 @@ test('missed composer clearing is recovered by a matching new response with a lo
 test('successful session receipt restores after page reload without another API call', async () => {
   const h=await harness([{eventId:'previous',prompt:'숲속 오두막',status:'success',websiteImages:1,result:{images:1,usage:{total:1513},energy:{wh:2.906473,carbonGrams:0.991107293}}}]);
   const {response}=h.response();await h.tick();
-  assert.match(text(response.children[0].box),/0.991 g/);
+  assert.match(text(response.children[0].box),/0\.991\s+gCO₂e/);
   assert.equal(h.messages.some(m=>m.type==='generatedImage'),false);
 });
 
@@ -144,4 +147,19 @@ test('multiline prompt matches split query text lines despite surrounding contro
   const h=await harness();await h.submit('토끼\n경찰복');const {response}=h.response();
   response.closest=()=>({querySelector:()=>({innerText:'You said 토끼 경찰복 Copy',querySelectorAll:()=>[{innerText:'토끼'},{innerText:'경찰복'}]})});
   await h.tick();assert.equal(h.messages.filter(m=>m.type==='generatedImage').length,1);
+});
+
+test('paper receipt preserves zero results and does not invent missing values or timestamps', async () => {
+  const zero={status:'success',websiteImages:1,result:{images:1,usage:{total:0},energy:{wh:0,carbonGrams:0,whPerToken:0.001921,kgCO2eqPerKwh:0.341}}};
+  const missing={status:'no-image',websiteImages:1,result:{images:0,usage:{total:null},energy:{wh:null,carbonGrams:null}}};
+  for (const record of [zero,missing]) {
+    const original=structuredClone(record);
+    const h=await harness();await h.submit();const {response}=h.response();await h.tick();
+    h.finish(record);await h.tick();
+    const output=text(response.children[0].box);
+    if(record===zero){assert.match(output,/0\.000\s+Wh/);assert.match(output,/약 0\.00초/);}
+    else {assert.match(output,/전력 소비량 미산정/);assert.doesNotMatch(output,/약 [0-9]/);}
+    assert.match(output,/생성 시각 미제공/);assert.match(output,/물 사용량 미산정/);
+    assert.deepEqual(record,original);
+  }
 });

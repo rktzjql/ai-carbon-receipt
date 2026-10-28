@@ -73,44 +73,114 @@
       receiptHost.toggleAttribute('data-floating', !inline);
       const shadow = receiptHost.attachShadow({mode: 'closed'});
       const style = document.createElement('style');
-      style.textContent = ':host{display:block;margin:16px 0;width:100%;max-width:680px} :host([data-floating]){position:fixed;bottom:16px;right:16px;width:min(420px,90vw);z-index:2147483647} section{background:#fff;color:#18251b;border:1px solid #56765d;border-radius:12px;padding:16px;font:14px/1.5 system-ui;box-shadow:0 3px 18px #0003;max-height:35vh;overflow:auto}h2{font-size:16px;margin:0 0 8px}p{margin:6px 0}button{float:right}';
-      const box = document.createElement('section');
+      style.textContent = `
+        :host{all:initial;display:block;width:min(350px,100%);margin:20px 0;color-scheme:light;contain:style}
+        :host([data-floating]){position:fixed;bottom:16px;right:16px;width:min(350px,calc(100vw - 32px));z-index:2147483647}
+        .gdcr-paper,.gdcr-paper *{box-sizing:border-box}
+        .gdcr-paper{position:relative;background:#fbf7e9;color:#20241f;border:1px solid #c9c6b8;padding:24px 22px 20px;font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;overflow-wrap:anywhere;isolation:isolate}
+        :host([data-floating]) .gdcr-paper{max-height:75vh;max-height:75dvh;overflow:auto}
+        .gdcr-paper::after{content:"";display:block;margin:20px -22px -20px;height:6px;background:linear-gradient(135deg,#c9c6b8 25%,transparent 25%) 0 0/8px 8px,linear-gradient(225deg,#c9c6b8 25%,transparent 25%) 0 0/8px 8px;transform:rotate(180deg)}
+        .gdcr-close{display:block;margin:-14px -12px 4px auto;padding:5px 8px;border:0;border-radius:2px;background:transparent;color:#4b5047;font:inherit;font-size:11px;cursor:pointer}
+        .gdcr-close:hover{background:#e7e5d7;color:#163d2c}
+        .gdcr-close:focus-visible,.gdcr-details summary:focus-visible{outline:2px solid #214c3c;outline-offset:3px}
+        .gdcr-header{text-align:center;padding-bottom:18px;border-bottom:1px solid #626b5e}
+        .gdcr-leaf{position:relative;display:block;width:14px;height:22px;margin:0 auto 12px;border:1.5px solid #214c3c;border-radius:14px 0 14px 0;transform:rotate(28deg)}
+        .gdcr-leaf::after{content:"";position:absolute;left:5px;top:3px;width:1px;height:19px;background:#214c3c;transform:rotate(26deg)}
+        .gdcr-title{margin:0;color:#214c3c;font:700 18px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.06em}
+        .gdcr-subtitle{margin:7px 0 0;font-size:9px;letter-spacing:.08em;line-height:1.6;color:#4b5047}
+        .gdcr-meta{padding:14px 0;border-bottom:1px dashed #999e8e}
+        .gdcr-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:8px;margin:5px 0;align-items:baseline}
+        .gdcr-label{color:#4b5047}
+        .gdcr-value{text-align:right;font-variant-numeric:tabular-nums}
+        .gdcr-caption{margin:7px 0 0;color:#4b5047;font-size:11px;line-height:1.65}
+        .gdcr-status{margin:9px 0 0;padding:7px 9px;border-left:2px solid #214c3c;font-size:11px;background:#f0eedf;color:#214c3c}
+        .gdcr-error{color:#852e22}
+        .gdcr-costs{padding:16px 0;border-bottom:1px dashed #999e8e}
+        .gdcr-section-title{margin:0 0 10px;font-size:10px;font-weight:400;letter-spacing:.08em;color:#214c3c}
+        .gdcr-costs .gdcr-row{margin:10px 0}
+        .gdcr-costs .gdcr-value{font-size:17px;font-weight:700;color:#20241f}
+        .gdcr-unit{font-size:11px;font-weight:400;color:#4b5047;white-space:nowrap}
+        .gdcr-equivalent{padding:16px 0;border-bottom:1px solid #626b5e}
+        .gdcr-equivalent p{margin:0}
+        .gdcr-equivalent strong{font-size:18px;color:#214c3c;font-variant-numeric:tabular-nums}
+        .gdcr-motto{margin:18px 0;text-align:center;font:600 13px/1.8 system-ui,sans-serif;color:#214c3c;word-break:keep-all}
+        .gdcr-details{margin-top:12px;color:#4b5047;font-size:11px;line-height:1.7}
+        .gdcr-details summary{cursor:pointer;padding:4px 0;color:#214c3c}
+        .gdcr-details p{margin:6px 0}
+        .gdcr-footer{margin-top:16px;padding-top:13px;border-top:1px dashed #999e8e;text-align:center;color:#214c3c;font-size:11px;font-weight:700;letter-spacing:.18em}
+        @media(max-width:360px){.gdcr-paper{padding:20px 16px 16px}.gdcr-title{font-size:16px}.gdcr-paper::after{margin:16px -16px -16px}.gdcr-costs .gdcr-value{font-size:15px}}
+        @media(forced-colors:active){.gdcr-paper{border-color:CanvasText}.gdcr-status{border-color:CanvasText}.gdcr-leaf{border-color:CanvasText}}
+      `;
+      const box = document.createElement('section'); box.className = 'gdcr-paper';
       shadow.append(style, box); receiptHost.box = box;
       (inline ? item.response : document.body).append(receiptHost);
       item.host = receiptHost;
     }
     const box = receiptHost.box; box.replaceChildren();
-    const close = document.createElement('button'); close.textContent = '닫기';
+    const el = (tag, className, text) => {
+      const node = document.createElement(tag); node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    };
+    const close = el('button', 'gdcr-close', '닫기'); close.type = 'button';
+    close.setAttribute('aria-label', '영수증 닫기');
     close.onclick = () => {receiptHost.remove(); item.closed = true;}; box.append(close);
-    const title = document.createElement('h2'); title.textContent = 'Gemini 이미지 영수증 · 0.2.2'; box.append(title);
-    const line = text => {const p = document.createElement('p'); p.textContent = text; box.append(p);};
+    const header = el('header', 'gdcr-header');
+    const leaf = el('span', 'gdcr-leaf'); leaf.setAttribute('aria-hidden', 'true');
+    header.append(leaf, el('h2', 'gdcr-title', 'AI CARBON RECEIPT'), el('p', 'gdcr-subtitle', 'THE HIDDEN COST OF GENERATION'));
+    box.append(header);
+    const row = (parent, label, value, unit) => {
+      const entry = el('div', 'gdcr-row');
+      const output = el('span', 'gdcr-value', value);
+      if (unit) output.append(el('span', 'gdcr-unit', ` ${unit}`));
+      entry.append(el('span', 'gdcr-label', label), output); parent.append(entry);
+    };
     const states = {'waiting-response':'프롬프트 인식 완료 · Gemini 응답 연결 대기', 'waiting-image':'응답 연결 완료 · 생성 이미지 로딩 대기', 'image-detected':'이미지 감지 완료 · 자동 전송 준비 중', 'unverified-submission':'프롬프트는 인식했지만 제출 완료를 확인하지 못했습니다.', 'detection-timeout':'이미지 감지 시간이 지났습니다. API는 호출하지 않았습니다.', dismissed:'API 호출하지 않음', pending:'확장프로그램 패널에서 모델 확인과 별도 유료 호출 동의가 필요합니다.', running:'별도 API 요청 중 · 추가 요금 발생', error:'API 요청 실패', success:'별도 API 이미지 생성 완료', 'no-image':'API 응답에 이미지 없음'};
-    line(states[record.status] || record.status);
-    if (record.reason) line(record.reason);
-    if (record.diagnostic) {
-      const details = document.createElement('details');
-      const summary = document.createElement('summary'); summary.textContent = '연결 진단';
-      const diagnostic = document.createElement('p'); diagnostic.textContent = record.diagnostic;
-      details.append(summary, diagnostic); box.append(details);
-    }
-    if (record.error) line(record.error);
-    if (!record.result) {
-      if (record.status === 'waiting-response') line('생성 이미지가 이미 보인다면 응답과 프롬프트를 연결하지 못한 상태입니다.');
-      if (record.status === 'waiting-image') line('이미지가 이미 보인다면 생성 이미지 표시 구조를 확인하지 못한 상태입니다.');
-      return;
-    }
-    if (record.result) {
-      const u = record.result.usage;
-      line(`토큰: 별도 API 실측 · 입력 ${u.input ?? '미제공'} / 출력 ${u.output ?? '미제공'} / 사고 ${u.thoughts ?? '미제공'} / 전체 ${u.total ?? '미제공'}`);
-      line(`Gemini 화면 생성 이미지: ${record.websiteImages}장 · 별도 API 응답 이미지: ${record.result.images}장`);
-    }
+    const meta = el('section', 'gdcr-meta'); meta.setAttribute('aria-label', '측정 정보');
+    row(meta, '서비스', 'Google Gemini');
+    // Render only a supplied timestamp. Never label the current UI render time as generation time.
+    const generatedAt = record.finishedAt ?? record.result?.finishedAt;
+    const date = generatedAt == null ? null : new Date(generatedAt);
+    row(meta, '생성 시각', date && Number.isFinite(date.getTime()) ? date.toLocaleString('ko-KR') : '미제공');
+    const usage = record.result?.usage;
+    row(meta, '사용 토큰', usage?.total == null ? '미제공' : String(usage.total), 'tokens');
+    meta.append(el('p', 'gdcr-caption', usage?.total != null ? '토큰: 별도 API 응답 실측값 · 추정 아님' : record.result ? '토큰: API 응답 미제공 · 추정하지 않음' : '토큰: API 응답 대기 · 추정하지 않음'));
+    if (usage) meta.append(el('p', 'gdcr-caption', `입력 ${usage.input ?? '미제공'} · 출력 ${usage.output ?? '미제공'} · 사고 ${usage.thoughts ?? '미제공'}`));
+    const status = el('p', 'gdcr-status', states[record.status] || record.status);
+    status.setAttribute('role', 'status'); meta.append(status);
+    if (record.reason) meta.append(el('p', 'gdcr-caption', record.reason));
+    if (record.error) meta.append(el('p', 'gdcr-caption gdcr-error', record.error));
+    if (record.status === 'waiting-response') meta.append(el('p', 'gdcr-caption', '생성 이미지가 이미 보인다면 응답과 프롬프트를 연결하지 못한 상태입니다.'));
+    if (record.status === 'waiting-image') meta.append(el('p', 'gdcr-caption', '이미지가 이미 보인다면 생성 이미지 표시 구조를 확인하지 못한 상태입니다.'));
+    box.append(meta);
     const energy = record.result?.energy;
-    line(energy?.wh != null ? `전력: 약 ${energy.wh.toFixed(3)} Wh · 가정 기반 추정` : '전력: 미산정 — 별도 API 전체 토큰 미제공');
-    line('계산: 별도 API 전체 토큰 × 0.001921 Wh/token · 사용자 지정 임시 계수, 출처·Gemini 이미지 생성 적용 타당성 미검증');
-    line(energy?.carbonGrams != null ? `탄소: 약 ${energy.carbonGrams.toFixed(3)} g CO₂eq · 가정 기반 추정` : '탄소: 미산정 — 계산에 필요한 값 없음');
-    line('미국 가정: 0.341 kg CO₂eq/kWh · 사용자 제공 계수, 출처·기준연도·실제 서버 지역 미확인');
-    line('물: 미산정 — 검증된 환산계수 없음');
-    line('Gemini 웹 응답의 토큰·환경 영향 실측값이 아닙니다. 전력 추정은 별도 API 요청만 대상으로 하며, 웹사이트 생성과 합산하지 않습니다.');
+    const costs = el('section', 'gdcr-costs'); costs.setAttribute('aria-label', '환경비용 추정치');
+    costs.append(el('h3', 'gdcr-section-title', 'ESTIMATED ENVIRONMENTAL COST'));
+    row(costs, '전력 소비량', energy?.wh != null ? energy.wh.toFixed(3) : '미산정', 'Wh');
+    row(costs, '탄소배출량', energy?.carbonGrams != null ? energy.carbonGrams.toFixed(3) : '미산정', 'gCO₂e');
+    row(costs, '물 사용량', '미산정', 'mL');
+    costs.append(el('p', 'gdcr-caption', '물 사용량은 검증된 환산계수가 없어 산정하지 않습니다.'));
+    box.append(costs);
+    const equivalent = el('section', 'gdcr-equivalent');
+    equivalent.append(el('h3', 'gdcr-section-title', 'IN EVERYDAY LIFE'), el('p', 'gdcr-caption', '1,000W 전자레인지 사용 시간'));
+    const seconds = energy?.wh != null ? (energy.wh * 3.6).toFixed(2) : null;
+    const comparison = el('p', 'gdcr-caption');
+    comparison.append(el('strong', '', seconds === null ? '미산정' : `약 ${seconds}초`)); equivalent.append(comparison);
+    equivalent.append(el('p', 'gdcr-caption', '전력량(Wh) × 3.6 · 동일 전력량 기준 비교'));
+    box.append(equivalent, el('p', 'gdcr-motto', '생성은 순간, 환경비용은 남습니다.'));
+    const notes = el('details', 'gdcr-details');
+    notes.append(el('summary', '', '추정치 및 산정 기준'));
+    notes.append(el('p', '', '전력·탄소는 가정 기반 추정치입니다. 별도 API 요청만 대상으로 하며 Gemini 웹사이트 생성 비용과 합산하지 않습니다.'));
+    notes.append(el('p', '', `전력: 전체 토큰 × ${energy?.whPerToken ?? '미제공'} Wh/token. 사용자 지정 임시 계수이며 출처·Gemini 이미지 생성 적용 타당성은 미검증입니다.`));
+    notes.append(el('p', '', `탄소: 전력(Wh) ÷ 1,000 × ${energy?.kgCO2eqPerKwh ?? '미제공'} kg CO₂eq/kWh × 1,000. 미국 기준 사용자 제공 계수이며 출처·기준연도·실제 서버 지역은 미확인입니다.`));
+    notes.append(el('p', '', '전체 토큰은 API 응답값을 그대로 표시하며, 누락 시 합산하거나 추정하지 않습니다. 생성 시각이 응답 데이터에 없으면 미제공으로 표시합니다.'));
+    if (record.result) notes.append(el('p', '', `Gemini 화면 생성 이미지: ${record.websiteImages ?? '미제공'}장 · 별도 API 응답 이미지: ${record.result.images}장`));
+    box.append(notes);
+    if (record.diagnostic) {
+      const details = el('details', 'gdcr-details');
+      details.append(el('summary', '', '연결 진단'), el('p', '', record.diagnostic)); box.append(details);
+    }
+    box.append(el('footer', 'gdcr-footer', 'SAVE THE PLANET'));
   }
   function queryMatches(query, prompt) {
     if (!query) return false;
