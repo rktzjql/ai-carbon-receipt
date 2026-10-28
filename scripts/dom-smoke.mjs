@@ -41,8 +41,8 @@ const check = `
  let receipt=response.querySelector('aside');
  assert(receipt && receipt.getBoundingClientRect().height>0,'inline receipt not visible');
  assert(receipt.shadowRoot.textContent.includes('API 요청 중'),'running state missing');
- record={status:'success',websiteImages:1,result:{images:1,usage:{total:1513},energy:{wh:2.906473,carbonGrams:0.991107293}}};
- await tick();assert(receipt.shadowRoot.textContent.includes('0.991 g'),'carbon receipt missing');
+ record={status:'success',websiteImages:1,result:{images:1,usage:{total:1513},energy:{wh:2.296734,carbonGrams:0.783186294}}};
+ await tick();assert(receipt.shadowRoot.textContent.includes('0.783 g'),'carbon receipt missing');
  receipt.remove();await tick();receipt=response.querySelector('aside');
  assert(receipt && receipt.getBoundingClientRect().height>0,'receipt lost after rerender');
  response.remove();await tick();receipt=document.body.querySelector('aside');

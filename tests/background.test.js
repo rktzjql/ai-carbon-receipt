@@ -66,8 +66,8 @@ test('fixed-model setup automatically sends the remembered prompt and returns re
   assert.equal(JSON.parse(lastRequest.init.body).contents[0].parts[0].text,prompt);
   const {record}=await send({type:'receipt',eventId},page);
   assert.equal(record.status,'success');assert.equal(record.result.usage.total,15);
-  assert.ok(Math.abs(record.result.energy.wh-0.028815)<1e-10);
-  assert.ok(Math.abs(record.result.energy.carbonGrams-0.009825915)<1e-10);
+  assert.ok(Math.abs(record.result.energy.wh-0.02277)<1e-10);
+  assert.ok(Math.abs(record.result.energy.carbonGrams-0.00776457)<1e-10);
   assert.equal(record.apiKey,undefined);
 });
 

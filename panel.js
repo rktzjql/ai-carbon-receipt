@@ -29,7 +29,7 @@ function renderRecord(record) {
     const r = record.result;
     box.append(element('p', `API 응답 이미지 수: ${r.images} · 응답 모델: ${r.modelVersion ?? '미제공'} · 종료 사유: ${r.finishReasons.join(', ') || r.blockReason || '미제공'}`));
     box.append(element('p', r.energy?.wh != null ? `전력: 약 ${r.energy.wh.toFixed(3)} Wh (가정 기반 추정)` : '전력: 미산정 — 전체 토큰 미제공'));
-    box.append(element('p', '별도 API 전체 토큰 × 0.001921 Wh/token. 사용자 지정 임시 계수이며 출처·Gemini 이미지 생성 적용 타당성은 미검증입니다. 웹사이트 생성 전력은 포함하지 않습니다.'));
+    box.append(element('p', '별도 API 전체 토큰 × 0.001518 Wh/token. 사용자 지정 임시 계수이며 출처·Gemini 이미지 생성 적용 타당성은 미검증입니다. 웹사이트 생성 전력은 포함하지 않습니다.'));
     box.append(element('p', r.energy?.carbonGrams != null ? `탄소: 약 ${r.energy.carbonGrams.toFixed(3)} g CO₂eq (가정 기반 추정)` : '탄소: 미산정 — 계산에 필요한 값 없음'));
     box.append(element('p', '미국 가정: 0.341 kg CO₂eq/kWh · 사용자 제공 계수, 출처·기준연도·실제 서버 지역 미확인'));
     box.append(element('p', '물: 미산정 — 검증된 환산계수 없음'));

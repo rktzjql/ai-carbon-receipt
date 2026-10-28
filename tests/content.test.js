@@ -59,10 +59,10 @@ test('new-chat route change, image loading, one API call and inline receipt whil
   assert.equal(response.children.length,1);
   const receipt=response.children[0];
   assert.match(text(receipt.box),/API 요청 중/);
-  h.finish({status:'success',websiteImages:1,result:{images:1,usage:{input:13,output:1500,total:1513},energy:{wh:2.906473,carbonGrams:0.991107293}}});
+  h.finish({status:'success',websiteImages:1,result:{images:1,usage:{input:13,output:1500,total:1513},energy:{wh:2.296734,carbonGrams:0.783186294}}});
   await h.tick();
-  assert.match(text(receipt.box),/1513/);assert.match(text(receipt.box),/2\.906\s+Wh/);assert.match(text(receipt.box),/0\.991\s+gCO₂e/);
-  assert.match(text(receipt.box),/약 10\.46초/);
+  assert.match(text(receipt.box),/1513/);assert.match(text(receipt.box),/2\.297\s+Wh/);assert.match(text(receipt.box),/0\.783\s+gCO₂e/);
+  assert.match(text(receipt.box),/약 8\.27초/);
   assert.match(text(receipt.box),/별도 API 응답 실측값/);
   assert.match(text(receipt.box),/SAVE THE PLANET/);
   receipt.box.children[0].onclick();await h.tick();assert.equal(receipt.isConnected,false);
@@ -110,9 +110,9 @@ test('missed composer clearing is recovered by a matching new response with a lo
 });
 
 test('successful session receipt restores after page reload without another API call', async () => {
-  const h=await harness([{eventId:'previous',prompt:'숲속 오두막',status:'success',websiteImages:1,result:{images:1,usage:{total:1513},energy:{wh:2.906473,carbonGrams:0.991107293}}}]);
+  const h=await harness([{eventId:'previous',prompt:'숲속 오두막',status:'success',websiteImages:1,result:{images:1,usage:{total:1513},energy:{wh:2.296734,carbonGrams:0.783186294}}}]);
   const {response}=h.response();await h.tick();
-  assert.match(text(response.children[0].box),/0\.991\s+gCO₂e/);
+  assert.match(text(response.children[0].box),/0\.783\s+gCO₂e/);
   assert.equal(h.messages.some(m=>m.type==='generatedImage'),false);
 });
 
@@ -150,7 +150,7 @@ test('multiline prompt matches split query text lines despite surrounding contro
 });
 
 test('paper receipt preserves zero results and omits removed presentation fields', async () => {
-  const zero={status:'success',websiteImages:1,result:{images:1,usage:{total:0},energy:{wh:0,carbonGrams:0,whPerToken:0.001921,kgCO2eqPerKwh:0.341}}};
+  const zero={status:'success',websiteImages:1,result:{images:1,usage:{total:0},energy:{wh:0,carbonGrams:0,whPerToken:0.001518,kgCO2eqPerKwh:0.341}}};
   const missing={status:'no-image',websiteImages:1,result:{images:0,usage:{total:null},energy:{wh:null,carbonGrams:null}}};
   for (const record of [zero,missing]) {
     const original=structuredClone(record);

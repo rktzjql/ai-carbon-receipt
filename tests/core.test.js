@@ -39,7 +39,7 @@ test('model ambiguity and text mentions cannot authorize automatic image generat
 test('errors redact supplied key',()=>assert.equal(cleanError('bad secret secret','secret'),'bad [REDACTED] [REDACTED]'));
 
 test('provisional energy uses only actual API total tokens and preserves missing usage', () => {
-  assert.ok(Math.abs(energyEstimate(1513).wh - 2.906473) < 1e-10);
+  assert.ok(Math.abs(energyEstimate(1513).wh - 2.296734) < 1e-10);
   assert.equal(energyEstimate(0).wh, 0);
   for (const value of [null, undefined, -1, NaN, '1513']) assert.equal(energyEstimate(value).wh, null);
   assert.equal(summarize({usageMetadata:{promptTokenCount:10,candidatesTokenCount:20}}).energy.wh, null);
@@ -49,7 +49,7 @@ test('provisional energy uses only actual API total tokens and preserves missing
 });
 
 test('US carbon scenario converts Wh to kWh and kilograms to grams without filling missing totals', () => {
-  assert.ok(Math.abs(energyEstimate(1513).carbonGrams - 0.991107293) < 1e-10);
+  assert.ok(Math.abs(energyEstimate(1513).carbonGrams - 0.783186294) < 1e-10);
   assert.equal(energyEstimate(0).carbonGrams, 0);
   assert.equal(energyEstimate(1513).kgCO2eqPerKwh, 0.341);
   for (const value of [null, undefined, -1, NaN, '1513']) assert.equal(energyEstimate(value).carbonGrams, null);

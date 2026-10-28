@@ -12,7 +12,7 @@ export function usageFrom(data) {
   return {input: count(u?.promptTokenCount), output: count(u?.candidatesTokenCount), thoughts: count(u?.thoughtsTokenCount), total: count(u?.totalTokenCount), promptDetails: details(u?.promptTokensDetails), outputDetails: details(u?.candidatesTokensDetails), raw: u ?? null};
 }
 // User-provided provisional assumption; not a measured Gemini energy coefficient.
-export const ASSUMED_WH_PER_TOKEN = 0.001921;
+export const ASSUMED_WH_PER_TOKEN = 0.001518;
 // User-provided US scenario; source/year and actual serving region are unverified.
 export const US_KG_CO2EQ_PER_KWH = 0.341;
 export function energyEstimate(totalTokens) {
